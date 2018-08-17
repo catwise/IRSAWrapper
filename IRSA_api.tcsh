@@ -152,7 +152,6 @@ Mode3:
 Done:
 echo IRSA_api Mode: ${1} Done
 set endTime = `date '+%m/%d/%Y %H:%M:%S'`
-echo Deleting ./${edited_mdexTable}.tbl 
 echo
 echo Wrapper Mode: ${1} Ended at:
 echo $endTime
