@@ -1,11 +1,5 @@
 # IRSAWrapper
-Wrapper to cross match an input MDEX table with the allwaise source catalog and the allwise reject catalog
-
-Modes
-Mode 2 (List of Tables Mode)
-./IRSA_api.tcsh 2 <ListOfMDEXtables>
-Mode 3 (Sinlge Table Mode)
-./IRSA_api.tcsh 3 <MDEXtable>
+Wrapper to cross match an input MDEX table with the AllWISE source catalog and the AllWISE reject catalog.
   
 ## How to Run Modes
 * Mode 2: List of Tables Mode
