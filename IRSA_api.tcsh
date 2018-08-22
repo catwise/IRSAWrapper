@@ -166,7 +166,7 @@ Mode3:
 	echo Match output ${RadecID}_stilts_temp.tbl to original ${edited_mdexTable} using stilts.
 	/Users/marocco/bin/stilts/stilts tmatch2 ifmt1=ipac ifmt2=ipac omode=out out=${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl ofmt=ipac matcher=exact values1=source_id values2=source_id_01 join=all1 find=all in1=${mdexTable} in2=${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl
 	echo DONE. Output: ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl 
-	goto G_Done #gzip_done
+	goto Mode3_Done #gzip_done
 
 Done:
 echo IRSA_api Mode: ${1} Done
@@ -177,7 +177,7 @@ echo $endTime
 exit
 
 #Done section for gzipping rsyncing
-G_Done:
+Mode3_Done:
 echo IRSA_api on ${RadecID} Mode: ${1} Done
 set endTime = `date '+%m/%d/%Y %H:%M:%S'`
 echo Deleting ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 
