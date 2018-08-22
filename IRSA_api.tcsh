@@ -8,13 +8,26 @@ echo
 echo Wrapper Started at:
 echo $startTime
 echo
-echo Version 1.1 
+echo Version 1.2 
 echo
 echo This Wrapper will wrap around and run:
 echo 1\) stf \(extracts cols of input MDEX table\)
 echo 2\) IRSA api
 echo 3\) stils \(http://www.star.bris.ac.uk/~mbt/stilts/sun256/tcatn-usage.html\)
 
+#check hyphenated argument
+@ i = 0
+set rsyncSet = "false"
+while ($i < $# + 1)
+     #user input nameslist -nl argument
+      if("$argv[$i]" == "-rsync") then
+        echo Argument "-rsync" detected. Will rsync Tyto, Otus, and Athene.
+        set rsyncSet = "true"
+      endif
+      @ i +=  1
+end
+
+#check mode and input arguments 
 if ($# < 2) then #($# != 2 && $# != 3) then
         #Error handling
         #Too many or too little arguments       
@@ -84,9 +97,13 @@ Mode2:
 
         echo "Current input MDEXTable == "$mdexTable
         echo Calling IRSA_api.tcsh Mode3 on $table 
-	(echo y | /Volumes/CatWISE1/ejmarchese/Dev/IRSAWrapper/IRSA_api.tcsh 3 $table) &	
+	if($rsyncSet == "true") then
+		(echo y | /Volumes/CatWISE1/ejmarchese/Dev/IRSAWrapper/IRSA_api.tcsh 3 $table -rsync) &
+	else
+		(echo y | /Volumes/CatWISE1/ejmarchese/Dev/IRSAWrapper/IRSA_api.tcsh 3 $table) &
+	endif
 	
-	set maxInParallel = 3
+	set maxInParallel = 12
         if(`ps -ef | grep IRSA_api | wc -l` > $maxInParallel + 1) then
                 echo  More than $maxInParallel IRSA_api processes, waiting...
                 while(`ps -ef | grep IRSA_api | wc -l` > $maxInParallel + 1)
@@ -113,41 +130,43 @@ Mode2:
 Mode3:	
 	#full path to mdexTable file (gz)
         set mdexTable = $InputTable 
-	set tempSize = `echo $InputTable  | awk '{print length($0)}'`
+	set tempSize = `basename $mdexTable  | awk '{print length($0)}'`
         @ tempIndex = ($tempSize - 3 - 4)
 	#does not include the .gz
         set edited_mdexTable = `basename $mdexTable | awk -v endIndex=$tempIndex '{print substr($0,0,endIndex)}'`
-        set edited_mdexTablePATH = `dirname $mdexTable`
+        set edit_mdexTablePATH = `dirname $mdexTable`
+	set edited_mdexTablePATH = `cd $edit_mdexTablePATH && pwd`
 	set RadecID = `echo $edited_mdexTable | awk '{print substr($0,0,8)}'`
-	echo Unzipping $mdexTable to ./${edited_mdexTable}.tbl
-	gunzip -k  $mdexTable  
 
         echo "Current input MDEXTable == "$mdexTable
-        echo "Edited_Current input MDEXTable == "$edited_mdexTable
+        echo "Edited_Current input MDEXTable == "${edited_mdexTablePATH}//${edited_mdexTable}.tbl
         echo "RadecID == "$RadecID
 	
-	echo Calling stf on ./${edited_mdexTable}.tbl
-	(/Users/CatWISE/stf ./${edited_mdexTable}.tbl 1 3 4 > ${edited_mdexTable}_stf.tbl) && echo "stf Done on ${mdexTable}" 
+	echo Unzipping $mdexTable to ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
+       #TODO gunzip not unzipping to thr right folder
+	gunzip -f -c -k $mdexTable > ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 
+ 
+	#set stfTable = ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
+	set stfTable = ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
+	echo Calling stf on ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
+	echo stfTable == ${stfTable}
+	((/Users/CatWISE/stf ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 1 3 4 >  ${stfTable}) && echo "stf Done. Output: ${stfTable}") || echo "stf failed???" 
 	
-	#Call irsa api using file
-	set stfTable = ${edited_mdexTable}_stf.tbl
-	#curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2 -F outfmt=1 -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${RadecID}_allwise_test_output.tbl
 	set tempCoaddID = \'${RadecID}_ac51\'
-	echo tempCoaddID === $tempCoaddID
+	echo tempCoaddID == $tempCoaddID
+
 
        # Program Calls
 	echo Calling IRSA api on ${stfTable} on AllWISE Source
-	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${RadecID}_allwise_Source_output.tbl
+	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
 	echo Calling IRSA api on ${stfTable} on AllWISE Reject
-	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psr -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${RadecID}_allwise_Reject_output.tbl
-	echo Concat the Source and Reject tbl
-	/Users/marocco/bin/stilts/stilts tcatn nin=2 ifmt1=ipac in1=${RadecID}_allwise_Source_output.tbl ifmt2=ipac in2=${RadecID}_allwise_Reject_output.tbl omode=out out=${RadecID}_stilts_temp.tbl ofmt=ipac
-	echo Match output ${RadecID}_stilts_temp.tbl to original ${edited_mdexTable}
-	#TODO ERROR figure out why this is not working :( 
-	/Users/marocco/bin/stilts/stilts tmatch2 ifmt1=ipac ifmt2=ipac omode=out out=${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl ofmt=ipac matcher=exact values1=source_id values2=source_id_01 join=all1 find=all in1=${mdexTable} in2=${RadecID}_stilts_temp.tbl
-	echo DONE on ${mdexTable}_stf.tbl && goto G_Done #gzip_done
-	#TODO optional rsync	
-	#TODO uplad to github
+	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psr -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
+	echo Concat the ${RadecID}_allwise_Source_output.tbl and ${RadecID}_allwise_Reject_output.tbl using stilts.
+	/Users/marocco/bin/stilts/stilts tcatn nin=2 ifmt1=ipac in1=${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl ifmt2=ipac in2=${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl omode=out out=${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl ofmt=ipac
+	echo Match output ${RadecID}_stilts_temp.tbl to original ${edited_mdexTable} using stilts.
+	/Users/marocco/bin/stilts/stilts tmatch2 ifmt1=ipac ifmt2=ipac omode=out out=${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl ofmt=ipac matcher=exact values1=source_id values2=source_id_01 join=all1 find=all in1=${mdexTable} in2=${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl
+	echo DONE. Output: ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl 
+	goto G_Done #gzip_done
 
 Done:
 echo IRSA_api Mode: ${1} Done
@@ -157,19 +176,84 @@ echo Wrapper Mode: ${1} Ended at:
 echo $endTime
 exit
 
+#Done section for gzipping rsyncing
 G_Done:
 echo IRSA_api on ${RadecID} Mode: ${1} Done
 set endTime = `date '+%m/%d/%Y %H:%M:%S'`
-echo Deleting ./${edited_mdexTable}.tbl 
-rm -f ./${edited_mdexTable}.tbl
-echo Deleting ${edited_mdexTable}_stf.tbl 
-rm -f ${edited_mdexTable}_stf.tbl
-echo Deleting ${RadecID}_stilts_temp.tbl 
-rm -f ${RadecID}_stilts_temp.tbl
+echo Deleting ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 
+rm -f ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
+echo NOTDeleting ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl 
+rm -f ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
+echo Deleting ${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl 
+rm -f ${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl
+#echo removing ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+#rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+#echo removing ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
+#rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
 echo
 	echo Gzipping and rm ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
-	gzip ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl && rm -f ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
+	gzip -f ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
+	rm -f ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
 	echo Done gzip on ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
+	#rsync step
+	if($rsyncSet == "true") then
+       	#rsync
+	set CatWISEDir = ${edited_mdexTablePATH}
+        echo running rsync on tile $RadecID
+        set currIP = `dig +short myip.opendns.com @resolver1.opendns.com`
+        echo current IP = $currIP
+        if($currIP == "137.78.30.21") then #Tyto
+                set otus_CatWISEDir = `echo $CatWISEDir | sed 's/CatWISE1/otus1/g'`
+                set athene_CatWISEDir = `echo $CatWISEDir | sed 's/CatWISE1/athene1/g'`
+                set otus_CatWISEDir = `echo $otus_CatWISEDir | sed 's/tyto/otus/g'`
+                set athene_CatWISEDir = `echo $athene_CatWISEDir | sed 's/tyto/athene/g'`
+                set otus_CatWISEDir = `echo $otus_CatWISEDir | sed 's/CatWISE3/otus3/g'`
+                set athene_CatWISEDir = `echo $athene_CatWISEDir | sed 's/CatWISE3/athene3/g'`
+                echo You are on Tyto!
+
+               #Transfer Tyto CatWISE/ dir to Otus
+                echo rsync Tyto\'s $CatWISEDir to Otus $otus_CatWISEDir
+                ssh ${user}@137.78.80.75 "mkdir -p $otus_CatWISEDir"
+                rsync -avu $CatWISEDir ${user}@137.78.80.75:$otus_CatWISEDir
+
+               #Transfer Tyto CatWISE/ dir to Athene
+                echo rsync Tyto\'s $CatWISEDir to Athene $athene_CatWISEDir
+                ssh ${user}@137.78.80.72 "mkdir -p $athene_CatWISEDir"
+                rsync -avu  $CatWISEDir ${user}@137.78.80.72:$athene_CatWISEDir
+        else if($currIP == "137.78.80.75") then  #Otus
+                set tyto_CatWISEDir = `echo $CatWISEDir | sed 's/otus3/CatWISE3/g'`
+                set tyto_CatWISEDir = `echo $tyto_CatWISEDir | sed 's/otus/tyto/g'`
+                set athene_CatWISEDir = `echo $CatWISEDir | sed 's/otus/athene/g'`
+                echo You are on Otus!
+
+               #Transfer Otus CatWISE/ dir to Tyto
+                echo rsync Otus\'s $CatWISEDir to Tyto $tyto_CatWISEDir
+                ssh ${user}@137.78.30.21 "mkdir -p $tyto_CatWISEDir"
+                rsync -avu $CatWISEDir ${user}@137.78.30.21:$tyto_CatWISEDir
+
+               #Transfer Otus CatWISE/ to Athene
+                echo rsync Otus\'s $CatWISEDir to Athene $athene_CatWISEDir
+                ssh ${user}@137.78.80.72 "mkdir -p $athene_CatWISEDir"
+                rsync -avu  $CatWISEDir ${user}@137.78.80.72:$athene_CatWISEDir
+        else if($currIP == "137.78.80.72") then #Athene
+                set tyto_CatWISEDir = `echo $CatWISEDir | sed 's/athene3/CatWISE3/g'`
+                set tyto_CatWISEDir = `echo $tyto_CatWISEDir | sed 's/athene/tyto/g'`
+                set otus_CatWISEDir = `echo $CatWISEDir | sed 's/athene/otus/g'`
+                echo You are on Athene!
+               
+	       #Transfer to Tyto
+                echo rsync Athene\'s $CatWISEDir/ to Tyto $tyto_CatWISEDir
+		ssh ${user}@137.78.30.21 "mkdir -p $tyto_CatWISEDir"
+                rsync -avu $CatWISEDir ${user}@137.78.30.21:$tyto_CatWISEDir
+
+               #Transfer to Otus
+                echo rsync Athene\'s $CatWISEDir/ to Otus $otus_CatWISEDir
+                ssh ${user}@137.78.80.75 "mkdir -p $otus_CatWISEDir"
+                rsync -avu $CatWISEDir ${user}@137.78.80.75:$otus_CatWISEDir
+        endif
+        endif
+
+
 echo
 echo Wrapper Mode: ${1} Ended at:
 echo $endTime
