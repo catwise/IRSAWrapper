@@ -3,12 +3,12 @@
 echo "This wrapper will use IRSA's API to take in an MDEX table, run through stf and output a table for both Source and Reject catalog.\n"
 #TODO fix random exit error and do documentation on the wmfflag attempts
 set wrapperDir = $PWD
-set startTime = `date '+%m/%d/%Y %H:%M:%S'`
+set startTime = `date +"%Y%m%d_%H%M%S"`
 echo 
 echo Wrapper Started at:
 echo $startTime
 echo
-echo Version 1.2 
+echo Version 1.3 
 echo
 echo This Wrapper will wrap around and run:
 echo 1\) stf \(extracts cols of input MDEX table\)
@@ -145,12 +145,31 @@ Mode3:
 	echo Unzipping $mdexTable to ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
        #TODO gunzip not unzipping to thr right folder
 	gunzip -f -c -k $mdexTable > ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 
- 
+	set saved_status = $? #Error Checking
+        #check exit status
+        echo gunzip saved_status == ${saved_status}
+        if($saved_status != 0) then #if program failed, status != 0
+                echo Failure detected on tile ${RadecID}
+                set failedProgram = "gunzip"
+                goto Failed
+        endif
+
+        set tempCoaddID = \'${RadecID}_ac51\'
+        echo tempCoaddID == ${tempCoaddID} 
+
 	#set stfTable = ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
 	set stfTable = ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
 	echo Calling stf on ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
 	echo stfTable == ${stfTable}
 	((/Users/CatWISE/stf ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 1 3 4 >  ${stfTable}) && echo "stf Done. Output: ${stfTable}") || echo "stf failed???" 
+	set saved_status = $? #Error Checking
+	#check exit status
+	echo stf saved_status == $saved_status 
+	if($saved_status != 0) then #if program failed, status != 0
+		echo Failure detected on tile $RadecID
+		set failedProgram = "stf"
+		goto Failed
+	endif
 	
 	set tempCoaddID = \'${RadecID}_ac51\'
 	echo tempCoaddID == $tempCoaddID
@@ -159,12 +178,48 @@ Mode3:
        # Program Calls
 	echo Calling IRSA api on ${stfTable} on AllWISE Source
 	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+	set saved_status = $? 
+	#check exit status
+	echo IRSA api saved_status == $saved_status 
+	if($saved_status != 0) then #if program failed, status != 0
+		echo Failure detected on tile $RadecID
+		set failedProgram = "IRSA api on ${stfTable} on AllWISE Source"
+		goto Failed
+	endif
+
 	echo Calling IRSA api on ${stfTable} on AllWISE Reject
 	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psr -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
-	echo Concat the ${RadecID}_allwise_Source_output.tbl and ${RadecID}_allwise_Reject_output.tbl using stilts.
+	set saved_status = $? 
+	#check exit status
+	echo IRSA api saved_status == $saved_status 
+	if($saved_status != 0) then #if program failed, status != 0
+		echo Failure detected on tile $RadecID
+		set failedProgram = "IRSA api on ${stfTable} on AllWISE Reject"
+		goto Failed
+	endif
+
+	echo Concatenate the ${RadecID}_allwise_Source_output.tbl and ${RadecID}_allwise_Reject_output.tbl using stilts.
 	/Users/marocco/bin/stilts/stilts tcatn nin=2 ifmt1=ipac in1=${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl ifmt2=ipac in2=${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl omode=out out=${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl ofmt=ipac
+	set saved_status = $? 
+	#check exit status
+	echo stilts saved_status == $saved_status 
+	if($saved_status != 0) then #if program failed, status != 0
+		echo Failure detected on tile $RadecID
+		set failedProgram = "Stilts Concatenation"
+		goto Failed
+	endif
+
 	echo Match output ${RadecID}_stilts_temp.tbl to original ${edited_mdexTable} using stilts.
 	/Users/marocco/bin/stilts/stilts tmatch2 ifmt1=ipac ifmt2=ipac omode=out out=${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl ofmt=ipac matcher=exact values1=source_id values2=source_id_01 join=all1 find=all in1=${mdexTable} in2=${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl
+	set saved_status = $? 
+	#check exit status
+	echo stils saved_status == $saved_status 
+	if($saved_status != 0) then #if program failed, status != 0
+		echo Failure detected on tile $RadecID
+		set failedProgram = "Stilts Match"
+		goto Failed
+	endif
+
 	echo DONE. Output: ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl 
 	goto Mode3_Done #gzip_done
 
@@ -258,3 +313,123 @@ echo
 echo Wrapper Mode: ${1} Ended at:
 echo $endTime
 exit
+
+
+#TODO save some lines! Simply set a variable == WARNING or ERROR. Then just do the same for both case (theres no need for that huge repeat) 
+#program jumps here if a program returns an exit status 32(Warning) or 64(Error)
+Failed:
+echo exit status of ${failedProgram} for tile \[${RadecID}\]\: ${saved_status}
+	set currIP = `dig +short myip.opendns.com @resolver1.opendns.com`
+        echo current IP = $currIP
+        if($currIP == "137.78.30.21") then #Tyto
+		if($saved_status <= 32) then #status <= 32, WARNING 
+			echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} 	
+			touch /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt
+			echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}  >> /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt 	
+               		echo WARNING output to error log: /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt
+			if($rsyncSet == "true") then #rsync to other machines
+	 	       	       #Transfer Tyto ErrorLogsTyto/ dir to Otus
+               	 		echo rsync Tyto\'s /Volumes/tyto2/ErrorLogsTyto/ to Otus /Volumes/otus2/ErrorLogsTyto/
+                		ssh ${user}@137.78.80.75 "mkdir -p /Volumes/otus2/ErrorLogsTyto/"
+                		rsync -avu /Volumes/tyto2/ErrorLogsTyto/ ${user}@137.78.80.75:/Volumes/otus2/ErrorLogsTyto/
+	               	       #Transfer Tyto ErrorLogsTyto/ dir to Athene
+        	        	echo rsync Tyto\'s /Volumes/tyto2/ErrorLogsTyto/ to Athene /Volumes/athene2/ErrorLogsTyto/ 
+                		ssh ${user}@137.78.80.72 "mkdir -p /Volumes/athene2/ErrorLogsTyto/"
+                		rsync -avu  /Volumes/tyto2/ErrorLogsTyto/ ${user}@137.78.80.72:/Volumes/athene2/ErrorLogsTyto/ 
+			endif
+			echo Exiting wrapper...
+			exit
+		else if($saved_status > 32) then #status > 32, ERROR
+			echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} 
+			touch /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt
+	                echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}  >> /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt
+               		echo ERROR output to error log: /Volumes/tyto2/ErrorLogsTyto/errorlog_IRSAWrapper_${startTime}.txt
+			if($rsyncSet == "true") then #rsync to other machines
+	 	       	       #Transfer Tyto ErrorLogsTyto/ dir to Otus
+               	 		echo rsync Tyto\'s /Volumes/tyto2/ErrorLogsTyto/ to Otus /Volumes/otus2/ErrorLogsTyto/
+                		ssh ${user}@137.78.80.75 "mkdir -p /Volumes/otus2/ErrorLogsTyto/"
+                		rsync -avu /Volumes/tyto2/ErrorLogsTyto/ ${user}@137.78.80.75:/Volumes/otus2/ErrorLogsTyto/
+	               	       #Transfer Tyto ErrorLogsTyto/ dir to Athene
+        	        	echo rsync Tyto\'s /Volumes/tyto2/ErrorLogsTyto/ to Athene /Volumes/athene2/ErrorLogsTyto/ 
+                		ssh ${user}@137.78.80.72 "mkdir -p /Volumes/athene2/ErrorLogsTyto/"
+                		rsync -avu  /Volumes/tyto2/ErrorLogsTyto/ ${user}@137.78.80.72:/Volumes/athene2/ErrorLogsTyto/ 
+			endif
+			echo Exiting wrapper...
+			exit
+		endif
+	else if($currIP == "137.78.80.75") then  #Otus
+		if($saved_status <= 32) then #status <= 32, WARNING
+			echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} 
+			touch /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+                	echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}  >> /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+               		echo WARNING output to error log: /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+	
+			if($rsyncSet == "true") then #rsync to other machines
+	                       #Transfer Otus ErrorLogsOtus/ dir to Tyto
+       		         	echo rsync Otus\'s /Volumes/otus1/ErrorLogsOtus/ to Tyto /Volumes/tyto1/ErrorLogsOtus/
+       		         	ssh ${user}@137.78.30.21 "mkdir -p /Volumes/tyto1/ErrorLogsOtus/"
+               		 	rsync -avu /Volumes/otus1/ErrorLogsOtus/ ${user}@137.78.30.21:/Volumes/tyto1/ErrorLogsOtus/
+            	   	       #Transfer Otus ErrorLogsOtus/ dir to Athene
+            	    		echo rsync Otus\'s /Volumes/otus1/ErrorLogsOtus/ to Athene /Volumes/athene1/ErrorLogsOtus/
+               		 	ssh ${user}@137.78.80.72 "mkdir -p /Volumes/athene1/ErrorLogsOtus/"
+                		rsync -avu /Volumes/otus1/ErrorLogsOtus/ ${user}@137.78.80.72:/Volumes/athene1/ErrorLogsOtus/
+			endif
+			echo Exiting wrapper...
+			exit
+		else if($saved_status > 32) then #status > 32, ERROR
+                        echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}
+			touch /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+                        echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} >> /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+                        echo ERROR output to error log: /Volumes/otus1/ErrorLogsOtus/errorlog_IRSAWrapper_${startTime}.txt
+			if($rsyncSet == "true") then #rsync to other machines
+	                       #Transfer Otus ErrorLogsOtus/ dir to Tyto
+       		         	echo rsync Otus\'s /Volumes/otus1/ErrorLogsOtus/ to Tyto /Volumes/tyto1/ErrorLogsOtus/
+       		         	ssh ${user}@137.78.30.21 "mkdir -p /Volumes/tyto1/ErrorLogsOtus/"
+               		 	rsync -avu /Volumes/otus1/ErrorLogsOtus/ ${user}@137.78.30.21:/Volumes/tyto1/ErrorLogsOtus/
+            	   	       #Transfer Otus ErrorLogsOtus/ dir to Athene
+            	    		echo rsync Otus\'s /Volumes/otus1/ErrorLogsOtus/ to Athene /Volumes/athene1/ErrorLogsOtus/
+               		 	ssh ${user}@137.78.80.72 "mkdir -p /Volumes/athene1/ErrorLogsOtus/"
+                		rsync -avu /Volumes/otus1/ErrorLogsOtus/ ${user}@137.78.80.72:/Volumes/athene1/ErrorLogsOtus/
+			endif
+			echo Exiting wrapper...
+			exit
+                endif
+	else if($currIP == "137.78.80.72") then  #Athene
+                if($saved_status <= 32) then #status <= 32, WARNING
+                        echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}
+			touch /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                        echo WARNING ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} >> /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                        echo WARNING output to error log: /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                	
+			if($rsyncSet == "true") then #rsync to other machines
+                 	       #Transfer Athene ErrorLogsAthene/ dir to Tyto
+                      	  	echo rsync Athene\'s /Volumes/athene3/ErrorLogsAthene/ to Tyto /Volumes/CatWISE3/ErrorLogsAthene/
+                        	ssh ${user}@137.78.30.21 "mkdir -p /Volumes/CatWISE3/ErrorLogsAthene/"
+                        	rsync -avu /Volumes/athene3/ErrorLogsAthene/ ${user}@137.78.30.21:/Volumes/CatWISE3/ErrorLogsAthene/
+              	               #Transfer Athene ErrorLogsTyto/ dir to Otus
+                        	echo rsync Athene\'s /Volumes/athene3/ErrorLogsAthene/ to Otus /Volumes/otus3/ErrorLogsAthene/
+                        	ssh ${user}@137.78.80.72 "mkdir -p /Volumes/otus3/ErrorLogsAthene/"
+                        	rsync -avu /Volumes/athene3/ErrorLogsAthene/ ${user}@137.78.80.72:/Volumes/otus3/ErrorLogsAthene/
+                	endif
+			echo Exiting wrapper...
+			exit
+                else if($saved_status > 32) then #status > 32, ERROR
+                        echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status}
+			touch /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                        echo ERROR ${failedProgram} on tile \[$RadecID\] exited with status ${saved_status} >> /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                        echo ERROR output to error log: /Volumes/athene3/ErrorLogsAthene/errorlog_IRSAWrapper_${startTime}.txt
+                	if($rsyncSet == "true") then #rsync to other machines
+                 	       #Transfer Athene ErrorLogsAthene/ dir to Tyto
+                      	  	echo rsync Athene\'s /Volumes/athene3/ErrorLogsAthene/ to Tyto /Volumes/CatWISE3/ErrorLogsAthene/
+                        	ssh ${user}@137.78.30.21 "mkdir -p /Volumes/CatWISE3/ErrorLogsAthene/"
+                        	rsync -avu /Volumes/athene3/ErrorLogsAthene/ ${user}@137.78.30.21:/Volumes/CatWISE3/ErrorLogsAthene/
+              	               #Transfer Athene ErrorLogsTyto/ dir to Otus
+                        	echo rsync Athene\'s /Volumes/athene3/ErrorLogsAthene/ to Otus /Volumes/otus3/ErrorLogsAthene/
+                        	ssh ${user}@137.78.80.72 "mkdir -p /Volumes/otus3/ErrorLogsAthene/"
+                        	rsync -avu /Volumes/athene3/ErrorLogsAthene/ ${user}@137.78.80.72:/Volumes/otus3/ErrorLogsAthene/
+                	endif
+			echo Exiting wrapper...
+			exit
+                endif
+	endif
+	goto Mode3_Done
