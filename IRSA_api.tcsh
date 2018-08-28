@@ -8,7 +8,7 @@ echo
 echo Wrapper Started at:
 echo $startTime
 echo
-echo Version 1.3 
+echo Version 1.4 
 echo
 echo This Wrapper will wrap around and run:
 echo 1\) stf \(extracts cols of input MDEX table\)
@@ -177,7 +177,7 @@ Mode3:
 
        # Program Calls
 	echo Calling IRSA api on ${stfTable} on AllWISE Source
-	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psd -F spatial=Upload -F uradius=2.75 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
 	set saved_status = $? 
 	#check exit status
 	echo IRSA api saved_status == $saved_status 
@@ -188,7 +188,7 @@ Mode3:
 	endif
 
 	echo Calling IRSA api on ${stfTable} on AllWISE Reject
-	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psr -F spatial=Upload -F uradius=2 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
+	curl -F filename=@${stfTable} -F catalog=allwise_p3as_psr -F spatial=Upload -F uradius=2.75 -F outfmt=1 -F constraints=coadd_id=$tempCoaddID -F selcols=cc_flags,w1cc_map,w1cc_map_str,w2cc_map,w2cc_map_str,coadd_id "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query" -o ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
 	set saved_status = $? 
 	#check exit status
 	echo IRSA api saved_status == $saved_status 
@@ -237,14 +237,14 @@ echo IRSA_api on ${RadecID} Mode: ${1} Done
 set endTime = `date '+%m/%d/%Y %H:%M:%S'`
 echo Deleting ${edited_mdexTablePATH}/${edited_mdexTable}.tbl 
 rm -f ${edited_mdexTablePATH}/${edited_mdexTable}.tbl
-echo NOTDeleting ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl 
+echo Deleting ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl 
 rm -f ${edited_mdexTablePATH}/${edited_mdexTable}_stf.tbl
 echo Deleting ${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl 
 rm -f ${edited_mdexTablePATH}/${RadecID}_stilts_temp.tbl
-#echo removing ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
-#rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
-#echo removing ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
-#rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
+echo Deleting ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Source_output.tbl
+echo Deleting ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
+rm -f ${edited_mdexTablePATH}/${RadecID}_allwise_Reject_output.tbl
 echo
 	echo Gzipping and rm ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
 	gzip -f ${edited_mdexTablePATH}/${edited_mdexTable}_af.tbl
