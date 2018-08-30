@@ -13,3 +13,10 @@ TODO
 * Mode 3: Single-Table Mode
 	* Run MDEX table given in command line input.
 	* __./IRSA_api.tcsh 3 \<MDEXtable\>__ 
+
+## IRSA WRAPPER Dependencies
+* From Tyto:
+	* /usr/local/gfortran/lib/\*
+	* /Users/CatWISE/stf
+	* /Users/marocco/bin/stilts/stilts
+	* /Users/marocco/bin/
